@@ -1,9 +1,20 @@
 from fastapi import FastAPI, UploadFile, File
 import pandas as pd
 from io import BytesIO
+from ai_utils import construir_prompt, consultar_modelo
+from fastapi.middleware.cors import CORSMiddleware
 
 # Inicializo la aplicación FastAPI
 app = FastAPI()
+
+# Permitir solicitudes desde el frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Podés restringir esto a tu dominio si querés
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Defino el endpoint POST para subir archivos
 @app.post("/upload")
@@ -26,10 +37,20 @@ async def upload_file(file: UploadFile = File(...)):
 
     # Armo un resumen básico del DataFrame para enviárselo luego al modelo de IA
     summary = {
-        "columnas": list(df.columns),  # Nombres de las columnas
-        "tipos": df.dtypes.astype(str).to_dict(),  # Tipos de datos por columna
-        "estadísticas": df.describe().to_dict()  # Estadísticas básicas (solo numéricas)
+        "columnas": list(df.columns),
+        "tipos": df.dtypes.astype(str).to_dict(),
+        "estadísticas": df.describe().to_dict()
     }
 
+    # Construyo el prompt para el modelo
+    prompt = construir_prompt(summary)
+
+    # Consulto al modelo de lenguaje para obtener sugerencias
+    sugerencias = consultar_modelo(prompt)
+
     # Devuelvo el resumen como respuesta
-    return summary
+    return {
+        "resumen": summary,
+        "prompt": prompt,
+        "sugerencias": sugerencias
+    }
