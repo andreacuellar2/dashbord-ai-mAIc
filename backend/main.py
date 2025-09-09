@@ -1,8 +1,9 @@
 from fastapi import FastAPI, UploadFile, File
 import pandas as pd
 from io import BytesIO
-from ai_utils import construir_prompt, consultar_modelo
+from ai_utils import construir_prompt, consultar_modelo, corregir_respuesta
 from fastapi.middleware.cors import CORSMiddleware
+import json
 
 # Inicializo la aplicación FastAPI
 app = FastAPI()
@@ -17,6 +18,8 @@ app.add_middleware(
 )
 
 # Defino el endpoint POST para subir archivos
+
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     # Leo el contenido del archivo subido
@@ -48,9 +51,28 @@ async def upload_file(file: UploadFile = File(...)):
     # Consulto al modelo de lenguaje para obtener sugerencias
     sugerencias = consultar_modelo(prompt)
 
+    try:
+        if sugerencias.strip().startswith("["):
+            sugerencias_dict = json.loads(sugerencias)
+        else:
+            sugerencias_dict = corregir_respuesta(sugerencias)
+    except Exception as e:
+        return {
+            "error": "La IA devolvió un formato no válido",
+            "detalle": str(e),
+            "respuesta_original": sugerencias
+        }
+    # Validamos estructura de cada sugerencia
+    for sugerencia in sugerencias_dict:
+        if not all(k in sugerencia for k in ["title", "chart_type", "parameters", "insight"]):
+            return {
+                "error": "Una sugerencia no tiene la estructura esperada",
+                "sugerencia": sugerencia
+            }
+
     # Devuelvo el resumen como respuesta
     return {
         "resumen": summary,
         "prompt": prompt,
-        "sugerencias": sugerencias
+        "sugerencias": sugerencias_dict
     }
