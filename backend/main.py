@@ -4,6 +4,8 @@ from io import BytesIO
 from ai_utils import construir_prompt, consultar_modelo, corregir_respuesta
 from fastapi.middleware.cors import CORSMiddleware
 import json
+from fastapi import Body
+import re
 
 # Inicializo la aplicación FastAPI
 app = FastAPI()
@@ -52,16 +54,18 @@ async def upload_file(file: UploadFile = File(...)):
     sugerencias = consultar_modelo(prompt)
 
     try:
+    # Si empieza con "[" asumimos que es un arreglo JSON válido
         if sugerencias.strip().startswith("["):
             sugerencias_dict = json.loads(sugerencias)
         else:
             sugerencias_dict = corregir_respuesta(sugerencias)
     except Exception as e:
         return {
-            "error": "La IA devolvió un formato no válido",
-            "detalle": str(e),
-            "respuesta_original": sugerencias
-        }
+        "error": "La IA devolvió un formato no válido",
+        "detalle": str(e),
+        "respuesta_original": sugerencias
+    }
+
     # Validamos estructura de cada sugerencia
     for sugerencia in sugerencias_dict:
         if not all(k in sugerencia for k in ["title", "chart_type", "parameters", "insight"]):
@@ -76,3 +80,31 @@ async def upload_file(file: UploadFile = File(...)):
         "prompt": prompt,
         "sugerencias": sugerencias_dict
     }
+
+
+@app.post("/visualize")
+async def visualize(params: dict = Body(...)):
+    """
+    Recibe los parámetros de una sugerencia de visualización (ejes X e Y),
+    y devuelve los datos agregados listos para graficar.
+    """
+    global df_global
+
+    if df_global is None:
+        return {"error": "No hay datos cargados. Subir un archivo primero."}
+
+    x = params.get("x_axis")
+    y = params.get("y_axis")
+
+    if not x or not y:
+        return {"error": "Faltan parámetros 'x_axis' o 'y_axis'."}
+
+    if x not in df_global.columns or y not in df_global.columns:
+        return {"error": f"Las columnas '{x}' o '{y}' no existen en el archivo."}
+
+    try:
+        # Agrupamos por la columna X y sumamos los valores de Y
+        grouped = df_global.groupby(x)[y].sum().reset_index()
+        return grouped.to_dict(orient="records")
+    except Exception as e:
+        return {"error": "No se pudo generar los datos para graficar", "detalle": str(e)}

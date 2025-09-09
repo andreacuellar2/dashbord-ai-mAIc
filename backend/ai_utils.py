@@ -48,8 +48,8 @@ def consultar_modelo(prompt: str) -> str:
     )
     return response.choices[0].message.content
 
-
 def corregir_respuesta(raw_text: str) -> list:
+    # Detectar múltiples objetos JSON separados por saltos de línea
     objetos = re.findall(r"\{.*?\}", raw_text, re.DOTALL)
     json_text = "[" + ",".join(objetos) + "]"
     return json.loads(json_text)
